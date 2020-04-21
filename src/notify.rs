@@ -7,8 +7,19 @@ use winapi::shared::guiddef::GUID;
 #[cfg(target_os = "windows")]
 use winapi::um::shellapi::{self, Shell_NotifyIconW, NOTIFYICONDATAW};
 
+
 #[cfg(not(target_os = "windows"))]
-use std::process::Command;
+use libnotify_sys::{
+    notify_init,
+    notify_notification_new,
+    notify_notification_show,
+    g_object_unref,
+    notify_uninit
+};
+#[cfg(not(target_os = "windows"))]
+use std::ptr;
+#[cfg(not(target_os = "windows"))]
+use std::ffi::{c_void, CString};
 
 type NtfyRes = Result<(), &'static str>;
 const TEXT_LEN: usize = 256;
@@ -71,12 +82,21 @@ pub fn send_notification(text: &str, title: &str) -> NtfyRes{
 
 #[cfg(not(target_os = "windows"))]
 pub fn send_notification(text: &str, title: &str) -> NtfyRes {
-    // TODO: Call into libnotify directly here
-    let result = Command::new("notify-send")
-        .args(&[title, text])
-        .spawn();
+    // Map strings to CStrings, which are 0-terminated
+    let text_str = CString::new(text).unwrap();
+    let title_str = CString::new(title).unwrap();
 
-    result
-        .map_err(|e| { "Calling notify-send failed" })
-        .map(|v| {})
+    unsafe {
+        notify_init("desktop-nfty\0".as_ptr() as *const i8);
+        let notif = notify_notification_new(
+            title_str.as_ptr() as *const i8,
+            text_str.as_ptr() as *const i8,
+            "dialog-information\0".as_ptr() as *const i8);
+
+        notify_notification_show(notif, ptr::null_mut());
+        g_object_unref(notif as *mut c_void);
+        notify_uninit();
+    }
+
+    Ok(())
 }
